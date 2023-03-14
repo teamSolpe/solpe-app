@@ -1,44 +1,53 @@
 import {useStorage} from '@hooks/useStorage';
-import {LOGIN_STATUS} from '@shared/const';
-import {Keypair} from '@solana/web3.js';
+import {LOGIN_STATUS, PRIVATE_KEY} from '@shared/const';
+import {clusterApiUrl, Connection, Keypair} from '@solana/web3.js';
 import React, {useEffect, useMemo, useState} from 'react';
+import {decode} from 'bs58';
 
 type Status = 'connected' | 'disconnected' | 'connecting' | 'fresh';
+
 interface Context {
   walletStatus: Status;
   account: Keypair | null;
-  createAccount: () => void;
+  web3: Connection;
+  setAccount: (account: Keypair) => void;
 }
+
 export const WalletContext = React.createContext<Context | null>(null);
 
 export const WalletProvider: React.FC<React.PropsWithChildren> = ({
   children,
 }) => {
-  const {getBoolean} = useStorage();
+  const {getBoolean, getString} = useStorage();
   const [account, setAccount] = useState<Keypair | null>(null);
   const [walletStatus, setWalletStatus] = useState<Status>('connecting');
 
-  useEffect(() => {
-    const seedPhrase = getBoolean(LOGIN_STATUS);
+  const web3 = useMemo(() => {
+    return new Connection(clusterApiUrl('testnet'));
+  }, []);
 
-    if (!seedPhrase) {
+  useEffect(() => {
+    const isLoggedIn = getBoolean(LOGIN_STATUS);
+
+    if (!isLoggedIn) {
       setAccount(null);
       setWalletStatus('fresh');
       return;
     }
+
+    const privateKey = getString(PRIVATE_KEY);
+
+    const bufferPrivateKey = decode(privateKey ?? '');
+    const keyPair = Keypair.fromSecretKey(bufferPrivateKey);
+
+    setAccount(keyPair);
+
     setWalletStatus('connected');
-  }, [getBoolean]);
-
-  const createAccount = () => {
-    const keyPair = Keypair.generate();
-
-    const x = Keypair.fromSecretKey(keyPair.secretKey);
-    console.log(x, 'keypair', x.secretKey);
-  };
+  }, [getBoolean, getString]);
 
   const value: Context = useMemo(
-    () => ({account, walletStatus, createAccount}),
-    [account, walletStatus],
+    () => ({account, walletStatus, web3, setAccount}),
+    [account, walletStatus, web3, setAccount],
   );
 
   return (

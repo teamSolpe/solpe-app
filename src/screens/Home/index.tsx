@@ -1,125 +1,131 @@
-import React, {useEffect, useState} from 'react';
-import {SafeAreaView} from 'react-native-safe-area-context';
-import {HomeScreenProps} from 'src/types/navigation';
+import {AddressField} from '@components/AddressField';
+import {H3} from '@components/Heading';
 import {useWallet} from '@hooks/useWallet';
-import {ActivityIndicator, Button} from 'react-native-paper';
-import {Alert, AppState, StyleSheet, View} from 'react-native';
-import {Word} from '@components/Word';
-import Clipboard from '@react-native-clipboard/clipboard';
-import {useStorage} from '@hooks/useStorage';
-import {useNewAccount} from '@hooks/query/useNewAccount';
+import {MotiView} from 'moti';
+import React, {useCallback, useRef} from 'react';
+import {StyleSheet, View} from 'react-native';
+import Icon from 'react-native-vector-icons/Feather';
+import {ActivityIndicator, IconButton, MD3Colors} from 'react-native-paper';
+import {FlatList} from 'react-native-gesture-handler';
+import {useTransactions} from '@hooks/useTransactions';
+import {TransactionBox} from '@components/Transaction';
+import {LAMPORTS_PER_SOL} from '@solana/web3.js';
+import {trimHash} from '@shared/trimHash';
 
-enum STEPS {
-  CREATE = 'create',
-  IMPORT = 'import',
-  CHOOSE = 'choose',
-  COMPLETE = 'complete',
-}
+export const Home = () => {
+  const {account} = useWallet();
+  const {data: transactions, isLoading} = useTransactions();
+  const scrollRef = useRef<FlatList | null>(null);
+  const initialIndex = useRef(0);
 
-export const Home: React.FC<HomeScreenProps> = () => {
-  const {createAccount, walletStatus} = useWallet();
-  const {insert, storage} = useStorage();
-  const [step, setStep] = useState<STEPS>(STEPS.CHOOSE);
-  // const [mnemonic, setMnemonic] = useState('');
-  // const [seed, setSeed] = useState('');
+  const onPressIcon = useCallback(
+    (type: 'inc' | 'dec') => {
+      if (initialIndex.current + 1 >= 5 && type === 'inc') return;
 
-  const {data, isLoading, isError, error} = useNewAccount({
-    options: {
-      enabled: AppState.currentState === 'active' && step === STEPS.CREATE,
+      if (initialIndex.current - 1 < 0 && type === 'dec') return;
+
+      if (type === 'inc') {
+        initialIndex.current += 1;
+      } else {
+        initialIndex.current -= 1;
+      }
+      scrollRef.current?.scrollToIndex({index: initialIndex.current});
     },
-  });
-
-  const onCopy = () => {
-    Clipboard.setString(data?.mnemonic ?? '');
-    Alert.alert('Info', 'Seed pharase is copied to clipboard');
-  };
-
-  useEffect(() => {
-    console.log('hello', isError, error);
-  }, [isError, error]);
-
-  const onComplete = () => {
-    Alert.prompt(
-      'Warning',
-      "Have you copied the seed phrase somewhere safe? Type 'Yes' if you do",
-      text => {
-        if (text.toLowerCase() === 'yes') {
-          setStep(STEPS.COMPLETE);
-        }
-      },
-    );
-  };
+    [scrollRef, initialIndex],
+  );
 
   return (
-    <SafeAreaView>
-      {walletStatus === 'connecting' && <ActivityIndicator />}
-      {walletStatus === 'fresh' && (
-        <>
-          {step === STEPS.CHOOSE && (
-            <View style={styles.container}>
-              <Button
-                style={styles.create}
-                mode="contained-tonal"
-                onPress={() => setStep(STEPS.CREATE)}>
-                Create Wallet
-              </Button>
-              <Button
-                mode="contained"
-                onPress={() => console.log('Importing account!')}>
-                Import Wallet
-              </Button>
-            </View>
-          )}
-          {step === STEPS.CREATE && (
-            <View style={styles.container}>
-              <View style={styles.mnemonic}>
-                {data?.mnemonic ? (
-                  data?.mnemonic?.split(' ').map(word => {
-                    return <Word key={word} word={word} />;
-                  })
-                ) : (
-                  <ActivityIndicator />
-                )}
+    <MotiView>
+      <AddressField address={account?.publicKey?.toBase58() ?? ''} />
+      <MotiView style={styles.transactionContainer}>
+        <View id="Transactions" style={styles.transactionNavigation}>
+          <H3>Recent Transactions</H3>
+          <View style={styles.navigationButtons}>
+            <IconButton
+              style={styles.icon}
+              animated
+              onPress={() => onPressIcon('dec')}
+              icon={() => (
+                <Icon
+                  color={MD3Colors.primary0}
+                  name="chevron-left"
+                  size={25}
+                />
+              )}
+            />
+            <IconButton
+              style={styles.icon}
+              animated
+              onPress={() => onPressIcon('inc')}
+              icon={() => (
+                <Icon
+                  color={MD3Colors.primary0}
+                  name="chevron-right"
+                  size={25}
+                />
+              )}
+            />
+          </View>
+        </View>
+        {isLoading && <ActivityIndicator />}
+        {!isLoading && transactions && (
+          <FlatList
+            data={transactions}
+            scrollEnabled
+            horizontal={true}
+            persistentScrollbar
+            ref={scrollRef}
+            // onScroll={e => console.log(e)}
+            // contentContainerStyle={{width: '100%'}}
+            renderItem={({item, index}) => {
+              if (index >= 5) return null;
+              const [from, to] = item?.transaction.message.accountKeys ?? [];
+              const amount =
+                ((item?.meta?.postBalances[0] ?? 0) -
+                  (item?.meta?.preBalances[0] ?? 0)) /
+                LAMPORTS_PER_SOL;
+              const fee = (item?.meta?.fee ?? 0) / LAMPORTS_PER_SOL;
 
-                <Button
-                  mode="contained"
-                  dark={true}
-                  uppercase
-                  onPress={onCopy}
-                  style={styles.copy}>
-                  Copy
-                </Button>
-              </View>
-              <Button onPress={onComplete} mode="outlined">
-                Complete
-              </Button>
-            </View>
-          )}
-        </>
-      )}
-    </SafeAreaView>
+              if (!from || !from.writable || !to || !to.writable) {
+                return null;
+              }
+
+              return (
+                <TransactionBox
+                  from={trimHash(from.pubkey.toBase58() ?? '')}
+                  to={trimHash(to.pubkey.toBase58() ?? '')}
+                  amount={Math.abs(amount).toString()}
+                  fee={fee.toString()}
+                />
+              );
+            }}
+          />
+        )}
+      </MotiView>
+    </MotiView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    marginHorizontal: 10,
-    justifyContent: 'center',
-    height: '100%',
+  transactionContainer: {
+    marginTop: 25,
+    paddingHorizontal: 20,
   },
-  create: {
-    marginBottom: 10,
-  },
-  mnemonic: {
-    justifyContent: 'center',
-    alignContent: 'center',
-    flexDirection: 'row',
+  transactionNavigation: {
     display: 'flex',
-    flexWrap: 'wrap',
-    marginBottom: 50,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexDirection: 'row',
   },
-  copy: {
-    marginTop: 20,
-    width: 200,
+  navigationButtons: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+
+  icon: {
+    padding: 1,
+    borderRadius: 2,
+    borderColor: 'black',
+    borderWidth: 2,
   },
 });

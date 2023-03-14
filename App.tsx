@@ -10,11 +10,17 @@ import {WalletProvider} from '@context/walletContext';
 import {MainNavigator} from '@navigation/index';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import React from 'react';
-import {Provider as PaperProvider, configureFonts} from 'react-native-paper';
+import {configureFonts, Provider as PaperProvider} from 'react-native-paper';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
+import {BottomSheetModalProvider} from '@gorhom/bottom-sheet';
+
+import 'react-native-reanimated';
+import 'react-native-gesture-handler';
 
 // Platform.select({default: "'Ubuntu', sans-serif;"});
 const client = new QueryClient();
+global.Buffer = require('buffer').Buffer;
+
 function App(): JSX.Element {
   return (
     <SafeAreaProvider>
@@ -23,7 +29,9 @@ function App(): JSX.Element {
           <WalletProvider>
             <PaperProvider
               theme={{fonts: configureFonts({config: {fontFamily: 'Ubuntu'}})}}>
-              <MainNavigator />
+              <BottomSheetModalProvider>
+                <MainNavigator />
+              </BottomSheetModalProvider>
             </PaperProvider>
           </WalletProvider>
         </StorageProvider>

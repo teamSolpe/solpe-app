@@ -5,14 +5,19 @@ import {StyleSheet, View} from 'react-native';
 import {H3} from '@components/Heading';
 import {ActivityIndicator} from 'react-native-paper';
 import {SplashScreenProps} from 'src/types/navigation';
+import {useWallet} from '@hooks/useWallet';
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({navigation}) => {
   const [show, setShow] = useState(true);
 
+  const {account} = useWallet();
   useEffect(() => {
     const hideSplash = () => {
       setShow(false);
-      navigation.replace('Home');
+      if (account) {
+        navigation.replace('Home');
+      }
+      navigation.replace('Login');
     };
 
     setTimeout(() => {
